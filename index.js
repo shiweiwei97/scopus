@@ -20,7 +20,7 @@ module.exports = function (args, flags) {
         pageSize    = flags.pageSize || 100,
         query       = 'issn(' + issn + ')',
         totalPath   = '#/search-results/opensearch:totalResults',
-        entryPath   = '..#/search-results/entry[*][take(title=/dc:title,issn=/prism:issn,date=/prism:coverDate,/authkeywords,url=/prism:url)]',
+        entryPath   = '..#/search-results/entry[*][take(title=/dc:title,issn=/prism:issn,date=/prism:coverDate,/authkeywords,url=/link)][@scopusHref]',
         filename    = issn + '.csv',
         params      = {
             count: pageSize,
@@ -43,6 +43,23 @@ module.exports = function (args, flags) {
             }
         });
     }
+
+    var udf = {
+        scopusHref: function (obj, accum) {
+            var url = '';
+            _.some(obj.url, function (ele) {
+                if (ele['@ref'] === 'scopus') {
+                    url = ele['@href'];
+                    return true;
+                }
+                return false;
+            });
+            obj.url = url;
+
+            accum.push(obj);
+            return accum;
+        }
+    };
 
     // prepare stream for write csv
     if (fs.existsSync(filename)) {
@@ -71,7 +88,7 @@ module.exports = function (args, flags) {
     requestAPI(url, function (err, data) {
 
         var total = parseInt(jpath.resolve(data, totalPath)[0], 10),
-            entries = jpath.resolve(data, entryPath),
+            entries = jpath.resolve(data, entryPath, udf),
             tasks = [], i;
 
         // first page
@@ -92,7 +109,7 @@ module.exports = function (args, flags) {
                         url = [baseUrl, querystring.stringify(params)].join('?');
 
                     requestAPI(url, function (err, data) {
-                        var entries = jpath.resolve(data, entryPath);
+                        var entries = jpath.resolve(data, entryPath, udf);
                         q.push({ entries: entries });
 
                         // wait for some time
